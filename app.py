@@ -3,10 +3,11 @@ from flask_login import current_user, login_required, login_user, logout_user
 from models.user import User
 from database import db
 from login import login_manager
+import bcrypt
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:admin123@127.0.0.1:3306/flask-crud'
 
 
 
@@ -27,7 +28,7 @@ def login():
 
     if username and password:
         user = User.query.filter_by(username=username).first()
-        if user and user.password == password:
+        if user and bcrypt.checkpw(str.encode(password), str.encode(user.password)):
             login_user(user)
             return jsonify({"message": "Autenticação realizada com sucesso"})
 
@@ -40,6 +41,7 @@ def logout():
     logout_user()
     return jsonify({"message": "Logout realizado com sucesso"})
 
+import bcrypt
 
 @app.route("/user", methods=["POST"])
 def create_user():
@@ -47,7 +49,8 @@ def create_user():
     username = data.get('username')
     password = data.get('password')
     if username and password:
-        user = User(username=username, password=password)
+        hashed_password = bcrypt.hashpw(str.encode(password), bcrypt.gensalt())
+        user = User(username=username, password=hashed_password, role='user')
         db.session.add(user)
         db.session.commit()
         return jsonify({"message": "Usuário cadastrado com sucesso"}), 201
@@ -57,6 +60,8 @@ def create_user():
 @login_required
 def delete_user(id_user):
     user = User().query.get(id_user)
+    if current_user.role == 'user':
+        return jsonify({"message": f"Operação não permitida"}), 403
     if id_user == current_user.id:
         return jsonify({"message": f"Deleção não permitida"}), 403
     if user:
@@ -71,6 +76,8 @@ def update_user(id_user):
     user = User().query.get(id_user)
     data = request.json
     password = data.get('password')
+    if id_user !=current_user and current_user.role == 'user':
+        return jsonify({"message": f"Operação não permitida"}), 403
     if user and password:
         user.password = password
         db.session.commit()
